@@ -1,4 +1,5 @@
 using Finaco.Api.Domain;
+using Xunit;
 
 namespace Finaco.Api.Tests;
 

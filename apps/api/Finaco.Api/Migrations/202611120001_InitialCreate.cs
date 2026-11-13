@@ -1,9 +1,13 @@
+using Finaco.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 #nullable disable
 
 namespace Finaco.Api.Migrations;
 
+[DbContext(typeof(FinacoDbContext))]
+[Migration("202611120001_InitialCreate")]
 public partial class InitialCreate : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -28,7 +32,7 @@ public partial class InitialCreate : Migration
             table.PrimaryKey("PK_transactions", x => x.Id);
             table.ForeignKey("FK_transactions_accounts_AccountId", x => x.AccountId, "accounts", "Id", onDelete: ReferentialAction.Cascade);
             table.ForeignKey("FK_transactions_categories_CategoryId", x => x.CategoryId, "categories", "Id", onDelete: ReferentialAction.SetNull);
-            table.CheckConstraint("ck_transactions_amount_positive", "amount > 0");
+            table.CheckConstraint("ck_transactions_amount_positive", "\"Amount\" > 0");
         });
         migrationBuilder.CreateTable("import_rows", table => new
         {
