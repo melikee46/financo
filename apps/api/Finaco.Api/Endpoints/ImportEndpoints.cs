@@ -16,6 +16,13 @@ public static class ImportEndpoints
             .DisableAntiforgery()
             .Produces<ImportPreviewResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
+        endpoints.MapPost("/api/imports/{id:guid}/confirm", Confirm)
+            .WithName("ConfirmImport")
+            .WithSummary("Confirm valid rows from an import")
+            .WithDescription("Creates transactions only for rows without validation errors.")
+            .Produces<ImportConfirmResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return endpoints;
     }
 
@@ -30,6 +37,22 @@ public static class ImportEndpoints
         catch (CsvImportException exception)
         {
             return TypedResults.BadRequest(new ProblemDetails { Title = "CSV doğrulama hatası", Detail = exception.Message });
+        }
+    }
+
+    private static async Task<Results<Ok<ImportConfirmResponse>, NotFound<ProblemDetails>, BadRequest<ProblemDetails>>> Confirm(
+        Guid id, ImportPreviewService service, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await service.ConfirmAsync(id, cancellationToken);
+            return result is null
+                ? TypedResults.NotFound(new ProblemDetails { Title = "İçe aktarma bulunamadı", Detail = $"{id} kimlikli içe aktarma bulunamadı." })
+                : TypedResults.Ok(result);
+        }
+        catch (CsvImportException exception)
+        {
+            return TypedResults.BadRequest(new ProblemDetails { Title = "İçe aktarma onaylanamadı", Detail = exception.Message });
         }
     }
 }

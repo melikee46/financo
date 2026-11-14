@@ -49,6 +49,66 @@ public sealed class ImportPreviewService(FinacoDbContext db)
         return new ImportPreviewResponse(job.Id, job.FileName, parsedRows.Count, parsedRows.Count(x => x.Errors.Count == 0), parsedRows.Count(x => x.Errors.Count > 0), parsedRows.Select(ToResponse).ToList());
     }
 
+    public async Task<ImportConfirmResponse?> ConfirmAsync(Guid importJobId, CancellationToken cancellationToken)
+    {
+        var job = await db.ImportJobs
+            .Include(importJob => importJob.Rows)
+            .SingleOrDefaultAsync(importJob => importJob.Id == importJobId, cancellationToken);
+
+        if (job is null) return null;
+
+        var validRows = job.Rows
+            .Where(row => DeserializeValidationErrors(row.ValidationErrorsJson).Count == 0)
+            .ToList();
+        var invalidRows = job.Rows.Count - validRows.Count;
+
+        if (job.Status == ImportStatus.Confirmed)
+        {
+            return new ImportConfirmResponse(job.Id, job.Status, job.Rows.Count, validRows.Count, invalidRows, validRows.Count, true);
+        }
+
+        if (validRows.Count == 0)
+            throw new CsvImportException("Onaylanabilecek geçerli işlem bulunmuyor.");
+
+        var accounts = await db.Accounts.OrderBy(account => account.CreatedAt).ToListAsync(cancellationToken);
+        if (accounts.Count == 0)
+            throw new CsvImportException("İşlemleri kaydetmek için en az bir hesap tanımlanmalıdır.");
+        if (accounts.Count > 1)
+            throw new CsvImportException("Birden fazla hesap bulundu. İşlem hesabı seçimi henüz desteklenmiyor.");
+
+        var account = accounts[0];
+        var transactions = new List<Transaction>(validRows.Count);
+
+        foreach (var row in validRows)
+        {
+            var parsed = DeserializeParsedRow(row.ParsedValuesJson);
+            if (parsed.TransactionDate is null || parsed.Amount is null || string.IsNullOrWhiteSpace(parsed.Description) || parsed.Amount <= 0 || parsed.CurrencyCode.Length != 3)
+                throw new CsvImportException($"{row.RowNumber}. satırın kaydedilmiş verisi geçersiz.");
+
+            transactions.Add(new Transaction
+            {
+                Id = Guid.NewGuid(),
+                AccountId = account.Id,
+                TransactionDate = parsed.TransactionDate.Value,
+                DescriptionOriginal = parsed.Description,
+                DescriptionNormalized = null,
+                Amount = parsed.Amount.Value,
+                CurrencyCode = parsed.CurrencyCode,
+                Type = TransactionType.Expense,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.Transactions.AddRange(transactions);
+        job.Status = ImportStatus.Confirmed;
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new ImportConfirmResponse(job.Id, job.Status, job.Rows.Count, validRows.Count, invalidRows, transactions.Count, false);
+    }
+
     private static ParsedImportRow ParseRow(string line, int rowNumber, int dateIndex, int descriptionIndex, int amountIndex, int currencyIndex)
     {
         var values = ParseCsvLine(line);
@@ -99,6 +159,12 @@ public sealed class ImportPreviewService(FinacoDbContext db)
         }
         values.Add(value.ToString()); return values;
     }
+
+    private static IReadOnlyList<string> DeserializeValidationErrors(string json) =>
+        JsonSerializer.Deserialize<List<string>>(json) ?? new List<string> { "Satır doğrulama sonucu okunamadı." };
+
+    private static ParsedRow DeserializeParsedRow(string json) =>
+        JsonSerializer.Deserialize<ParsedRow>(json) ?? throw new CsvImportException("İçe aktarma satır verisi okunamadı.");
 
     private sealed record ParsedImportRow(int RowNumber, DateOnly? TransactionDate, string Description, decimal? Amount, string CurrencyCode, IReadOnlyList<string> Errors);
     private sealed record ParsedRow(DateOnly? TransactionDate, string Description, decimal? Amount, string CurrencyCode);

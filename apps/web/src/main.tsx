@@ -23,6 +23,16 @@ type PreviewResponse = {
   rows: PreviewRow[]
 }
 
+type ConfirmResponse = {
+  importJobId: string
+  status: string
+  totalRows: number
+  validRows: number
+  invalidRows: number
+  createdTransactions: number
+  alreadyConfirmed: boolean
+}
+
 const navItems: { id: View; label: string; icon: string }[] = [
   { id: 'overview', label: 'Genel Bakış', icon: '◼' },
   { id: 'import', label: 'Ekstre ekle', icon: '＋' },
@@ -32,6 +42,7 @@ const navItems: { id: View; label: string; icon: string }[] = [
 function App() {
   const [view, setView] = useState<View>('overview')
   const [preview, setPreview] = useState<PreviewResponse | null>(null)
+  const [confirmation, setConfirmation] = useState<ConfirmResponse | null>(null)
 
   return (
     <div className="app-shell">
@@ -43,8 +54,8 @@ function App() {
         </header>
         <main className="content">
           {view === 'overview' && <Overview preview={preview} onImport={() => setView('import')} />}
-          {view === 'import' && <ImportView preview={preview} onPreview={setPreview} />}
-          {view === 'transactions' && <TransactionsView preview={preview} onImport={() => setView('import')} />}
+          {view === 'import' && <ImportView preview={preview} confirmation={confirmation} onPreview={(nextPreview) => { setPreview(nextPreview); setConfirmation(null) }} onConfirmed={setConfirmation} />}
+          {view === 'transactions' && <TransactionsView preview={preview} confirmation={confirmation} onImport={() => setView('import')} />}
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Ana menü">{navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}</nav>
@@ -84,10 +95,11 @@ function Overview({ preview, onImport }: { preview: PreviewResponse | null; onIm
 
 function EmptyChart() { return <div className="empty-chart"><div className="chart-lines"><span /><span /><span /><span /></div><div className="chart-axis"><span>Bugün</span><span>Maaş günü</span></div><div className="chart-legend"><span><i className="legend-line" /> Gerçekleşen</span><span><i className="legend-dashed" /> Tahmin</span></div></div> }
 
-function ImportView({ preview, onPreview }: { preview: PreviewResponse | null; onPreview: (preview: PreviewResponse) => void }) {
+function ImportView({ preview, confirmation, onPreview, onConfirmed }: { preview: PreviewResponse | null; confirmation: ConfirmResponse | null; onPreview: (preview: PreviewResponse) => void; onConfirmed: (confirmation: ConfirmResponse) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   async function previewFile() {
     if (!file) return
     setLoading(true); setError(null)
@@ -96,20 +108,31 @@ function ImportView({ preview, onPreview }: { preview: PreviewResponse | null; o
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Beklenmeyen bir hata oluştu.') }
     finally { setLoading(false) }
   }
+  async function confirmImport() {
+    if (!preview) return
+    setConfirming(true); setError(null)
+    try {
+      const response = await fetch(`http://localhost:5080/api/imports/${preview.importJobId}/confirm`, { method: 'POST' })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.detail ?? 'İçe aktarma onaylanamadı.')
+      onConfirmed(body as ConfirmResponse)
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Beklenmeyen bir hata oluştu.') }
+    finally { setConfirming(false) }
+  }
   return <>
     <div className="page-heading"><div><p className="section-kicker">Veri ekle</p><h2>Ekstreni içe aktar</h2><p className="muted">Önce kontrol ederiz, sen onaylamadan finansal kayıt oluşturmayız.</p></div></div>
     <section className="import-layout"><article className="panel upload-panel"><div className="dropzone"><div className="upload-symbol">↑</div><h3>CSV dosyanı buraya bırak</h3><p className="muted">veya bilgisayarından seç. En fazla 5 MB.</p><label className="primary-button file-picker">Dosya seç<input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>{file && <p className="selected-file">Seçilen dosya: <strong>{file.name}</strong></p>}</div><div className="format-note"><strong>Beklenen sütunlar</strong><span>tarih / açıklama / tutar</span><span>Para birimi isteğe bağlıdır, varsayılan TRY.</span></div>{error && <div className="alert error" role="alert">{error}</div>}<button className="primary-button full-button" type="button" onClick={previewFile} disabled={!file || loading}>{loading ? 'Kontrol ediliyor…' : 'Önizlemeyi başlat'}</button></article><aside className="explanation-card"><span className="explanation-icon">✓</span><h3>Kontrol sende</h3><p>Dosyayı önce satır satır doğrularız. Hatalı tarih veya tutarları görmeden hiçbir veri kalıcı işleme dönüşmez.</p><span className="privacy-label">Gizlilik · Açıklanabilirlik</span></aside></section>
-    {preview && <PreviewResult preview={preview} />}
+    {preview && <PreviewResult preview={preview} confirmation={confirmation} confirming={confirming} onConfirm={confirmImport} />}
   </>
 }
 
-function PreviewResult({ preview }: { preview: PreviewResponse }) { return <section className="panel preview-panel"><div className="panel-header"><div><p className="section-kicker">Önizleme sonucu</p><h3>{preview.fileName}</h3></div><span className="data-badge">{preview.importJobId.slice(0, 8)}</span></div><div className="summary-row"><Summary label="Toplam satır" value={preview.totalRows.toString()} /><Summary label="Geçerli" value={preview.validRows.toString()} tone="positive" /><Summary label="Hatalı" value={preview.invalidRows.toString()} tone="negative" /></div><PreviewTable rows={preview.rows} /></section> }
+function PreviewResult({ preview, confirmation, confirming, onConfirm }: { preview: PreviewResponse; confirmation: ConfirmResponse | null; confirming: boolean; onConfirm: () => void }) { return <section className="panel preview-panel"><div className="panel-header"><div><p className="section-kicker">Önizleme sonucu</p><h3>{preview.fileName}</h3></div><span className="data-badge">{preview.importJobId.slice(0, 8)}</span></div><div className="summary-row"><Summary label="Toplam satır" value={preview.totalRows.toString()} /><Summary label="Geçerli" value={preview.validRows.toString()} tone="positive" /><Summary label="Hatalı" value={preview.invalidRows.toString()} tone="negative" /></div>{preview.validRows > 0 && !confirmation && <button className="primary-button" type="button" onClick={onConfirm} disabled={confirming}>{confirming ? 'Kaydediliyor…' : 'Onayla ve kaydet'}</button>}{confirmation && <div className="confirmation-result" role="status"><strong>{confirmation.alreadyConfirmed ? 'Bu import daha önce onaylandı.' : 'Import başarıyla onaylandı.'}</strong><span>{confirmation.createdTransactions} işlem kaydedildi. {confirmation.invalidRows} hatalı satır kaydedilmedi.</span></div>}<PreviewTable rows={preview.rows} /></section> }
 function Summary({ label, value, tone = '' }: { label: string; value: string; tone?: string }) { return <div className="summary-item"><span>{label}</span><strong className={tone}>{value}</strong></div> }
 function PreviewTable({ rows }: { rows: PreviewRow[] }) { return <div className="table-wrap"><table><thead><tr><th>Satır</th><th>Durum</th><th>Tarih</th><th>Açıklama</th><th>Tutar</th><th>Not</th></tr></thead><tbody>{rows.map((row) => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td><span className={`tag ${row.isValid ? 'valid' : 'invalid'}`}>{row.isValid ? 'Geçerli' : 'Hatalı'}</span></td><td>{row.transactionDate ?? '—'}</td><td>{row.description || '—'}</td><td>{row.amount == null ? '—' : `${row.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${row.currencyCode}`}</td><td>{row.validationErrors.join(' ') || '—'}</td></tr>)}</tbody></table></div> }
 
-function TransactionsView({ preview, onImport }: { preview: PreviewResponse | null; onImport: () => void }) {
+function TransactionsView({ preview, confirmation, onImport }: { preview: PreviewResponse | null; confirmation: ConfirmResponse | null; onImport: () => void }) {
   const validRows = useMemo(() => preview?.rows.filter((row) => row.isValid) ?? [], [preview])
-  return <><div className="page-heading"><div><p className="section-kicker">İşlem inceleme</p><h2>İşlemler</h2><p className="muted">İçe aktarılan satırları onaylamadan önce gözden geçir.</p></div><button className="secondary-button" type="button" onClick={onImport}>＋ Yeni ekstre</button></div>{!preview ? <section className="panel large-empty"><span className="empty-icon">≡</span><h3>Henüz işlem yok</h3><p className="muted">İşlemleri görmek için önce bir CSV ekstre yükle.</p><button className="primary-button" type="button" onClick={onImport}>Ekstre ekle</button></section> : <section className="panel"><div className="panel-header"><div><p className="section-kicker">İncelenecek satırlar</p><h3>{validRows.length} geçerli işlem</h3></div><span className="soft-chip">Onay bekliyor</span></div><PreviewTable rows={preview.rows} /></section>}</>
+  return <><div className="page-heading"><div><p className="section-kicker">İşlem inceleme</p><h2>İşlemler</h2><p className="muted">İçe aktarılan satırları onaylamadan önce gözden geçir.</p></div><button className="secondary-button" type="button" onClick={onImport}>＋ Yeni ekstre</button></div>{!preview ? <section className="panel large-empty"><span className="empty-icon">≡</span><h3>Henüz işlem yok</h3><p className="muted">İşlemleri görmek için önce bir CSV ekstre yükle.</p><button className="primary-button" type="button" onClick={onImport}>Ekstre ekle</button></section> : <section className="panel"><div className="panel-header"><div><p className="section-kicker">İncelenecek satırlar</p><h3>{confirmation ? `${confirmation.createdTransactions} işlem kaydedildi` : `${validRows.length} geçerli işlem`}</h3></div><span className="soft-chip">{confirmation ? 'Onaylandı' : 'Onay bekliyor'}</span></div><PreviewTable rows={preview.rows} /></section>}</>
 }
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
