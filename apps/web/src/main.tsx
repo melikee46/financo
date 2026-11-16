@@ -1,139 +1,81 @@
-import { StrictMode, useMemo, useState } from 'react'
+import { StrictMode, useEffect, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 
-type View = 'overview' | 'import' | 'transactions'
-
-type PreviewRow = {
-  rowNumber: number
-  isValid: boolean
-  transactionDate: string | null
-  description: string | null
-  amount: number | null
-  currencyCode: string
-  validationErrors: string[]
-}
-
-type PreviewResponse = {
-  importJobId: string
-  fileName: string
-  totalRows: number
-  validRows: number
-  invalidRows: number
-  rows: PreviewRow[]
-}
-
-type ConfirmResponse = {
-  importJobId: string
-  status: string
-  totalRows: number
-  validRows: number
-  invalidRows: number
-  createdTransactions: number
-  alreadyConfirmed: boolean
-}
+const API_BASE_URL = 'http://localhost:5080'
+type View = 'overview' | 'transactions' | 'import' | 'settings'
+type TransactionType = 'Income' | 'Expense' | 'Transfer' | 'Refund' | 'CardPayment'
+type Transaction = { date: string; description: string; amount: number; currency: string; type: TransactionType; accountName: string; categoryName: string | null }
+type TransactionResponse = { items: Transaction[]; page: number; pageSize: number; totalCount: number; totalPages: number }
+type TransactionFilters = { from: string; to: string; type: '' | TransactionType; accountId: string; page: number; pageSize: number }
+type PreviewRow = { rowNumber: number; isValid: boolean; transactionDate: string | null; description: string | null; amount: number | null; currencyCode: string; validationErrors: string[] }
+type PreviewResponse = { importJobId: string; fileName: string; totalRows: number; validRows: number; invalidRows: number; rows: PreviewRow[] }
+type ConfirmResponse = { importJobId: string; status: string; totalRows: number; validRows: number; invalidRows: number; createdTransactions: number; alreadyConfirmed: boolean }
 
 const navItems: { id: View; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Genel Bakış', icon: '◼' },
-  { id: 'import', label: 'Ekstre ekle', icon: '＋' },
-  { id: 'transactions', label: 'İşlemler', icon: '≡' },
+  { id: 'overview', label: 'Genel Bakış', icon: '◼' }, { id: 'transactions', label: 'İşlemler', icon: '≡' },
+  { id: 'import', label: 'Ekstre Yükle', icon: '＋' }, { id: 'settings', label: 'Ayarlar', icon: '⚙' },
 ]
 
+async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
+  let response: Response
+  try { response = await fetch(`${API_BASE_URL}${path}`, options) } catch { throw new Error('Financo API’ye ulaşılamadı. Backend’in çalıştığını kontrol edin.') }
+  const body = await response.json().catch(() => null) as { detail?: string; title?: string }
+  if (!response.ok) throw new Error(body?.detail ?? body?.title ?? 'İstek tamamlanamadı.')
+  return body as T
+}
+
+async function listTransactions(filters: TransactionFilters) {
+  const params = new URLSearchParams({ page: String(filters.page), pageSize: String(filters.pageSize) })
+  if (filters.from) params.set('from', filters.from); if (filters.to) params.set('to', filters.to)
+  if (filters.type) params.set('type', filters.type); if (filters.accountId.trim()) params.set('accountId', filters.accountId.trim())
+  return requestJson<TransactionResponse>(`/api/transactions?${params.toString()}`)
+}
+async function previewImport(file: File) { const formData = new FormData(); formData.append('file', file); return requestJson<PreviewResponse>('/api/imports/preview', { method: 'POST', body: formData }) }
+async function confirmImport(importJobId: string) { return requestJson<ConfirmResponse>(`/api/imports/${importJobId}/confirm`, { method: 'POST' }) }
+function formatMoney(amount: number, currency: string) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY' }).format(amount) }
+function formatDate(value: string | null | undefined) { if (!value) return '—'; const date = new Date(`${value}T00:00:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('tr-TR').format(date) }
+
 function App() {
-  const [view, setView] = useState<View>('overview')
-  const [preview, setPreview] = useState<PreviewResponse | null>(null)
-  const [confirmation, setConfirmation] = useState<ConfirmResponse | null>(null)
-
-  return (
-    <div className="app-shell">
-      <Sidebar activeView={view} onNavigate={setView} />
-      <div className="main-column">
-        <header className="topbar">
-          <div><p className="topbar-kicker">Kişisel finans görünümü</p><h1>Denge</h1></div>
-          <div className="topbar-actions"><span className="period-label">Kasım 2026</span><button className="primary-button compact" type="button" onClick={() => setView('import')}>＋ Ekstre ekle</button></div>
-        </header>
-        <main className="content">
-          {view === 'overview' && <Overview preview={preview} onImport={() => setView('import')} />}
-          {view === 'import' && <ImportView preview={preview} confirmation={confirmation} onPreview={(nextPreview) => { setPreview(nextPreview); setConfirmation(null) }} onConfirmed={setConfirmation} />}
-          {view === 'transactions' && <TransactionsView preview={preview} confirmation={confirmation} onImport={() => setView('import')} />}
-        </main>
-      </div>
-      <nav className="mobile-nav" aria-label="Ana menü">{navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}</nav>
-    </div>
-  )
+  const [view, setView] = useState<View>('overview'); const [preview, setPreview] = useState<PreviewResponse | null>(null); const [confirmation, setConfirmation] = useState<ConfirmResponse | null>(null)
+  useEffect(() => { const handler = () => setView('transactions'); window.addEventListener('navigate-transactions', handler); return () => window.removeEventListener('navigate-transactions', handler) }, [])
+  return <div className="app-shell"><Sidebar activeView={view} onNavigate={setView} /><div className="main-column"><header className="topbar"><div><p className="topbar-kicker">Kişisel finans görünümü</p><h1>Financo</h1></div><div className="topbar-actions"><span className="period-label">Gerçek verilerle</span><button className="primary-button compact" type="button" onClick={() => setView('import')}>＋ Ekstre yükle</button></div></header><main className="content">{view === 'overview' && <Overview onImport={() => setView('import')} />}{view === 'transactions' && <TransactionsView onImport={() => setView('import')} />}{view === 'import' && <ImportView preview={preview} confirmation={confirmation} onPreview={(next) => { setPreview(next); setConfirmation(null) }} onConfirmed={setConfirmation} onViewTransactions={() => setView('transactions')} />}{view === 'settings' && <SettingsView />}</main></div><nav className="mobile-nav" aria-label="Ana menü">{navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}</nav></div>
 }
 
-function Sidebar({ activeView, onNavigate }: { activeView: View; onNavigate: (view: View) => void }) {
-  return <aside className="sidebar">
-    <div className="brand"><span className="brand-mark">D</span><span>Denge</span></div>
-    <p className="sidebar-label">Çalışma alanı</p>
-    <nav aria-label="Ana menü" className="desktop-nav">{navItems.map((item) => <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => onNavigate(item.id)} />)}</nav>
-    <div className="sidebar-footer"><span className="tiny-dot" aria-hidden="true" /> <span>Yerel demo alanı</span></div>
-  </aside>
+function Sidebar({ activeView, onNavigate }: { activeView: View; onNavigate: (view: View) => void }) { return <aside className="sidebar"><div className="brand"><span className="brand-mark">F</span><span>Financo</span></div><p className="sidebar-label">Çalışma alanı</p><nav aria-label="Ana menü" className="desktop-nav">{navItems.map((item) => <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => onNavigate(item.id)} />)}</nav><div className="sidebar-footer"><span className="tiny-dot" aria-hidden="true" /> <span>Yerel demo alanı</span></div></aside> }
+function NavButton({ item, active, onClick }: { item: (typeof navItems)[number]; active: boolean; onClick: () => void }) { return <button className={`nav-button ${active ? 'active' : ''}`} type="button" onClick={onClick} aria-current={active ? 'page' : undefined}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button> }
+
+function Overview({ onImport }: { onImport: () => void }) {
+  const [result, setResult] = useState<TransactionResponse | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true)
+  useEffect(() => { listTransactions({ from: '', to: '', type: '', accountId: '', page: 1, pageSize: 5 }).then(setResult).catch((e) => setError(e instanceof Error ? e.message : 'İşlemler yüklenemedi.')).finally(() => setLoading(false)) }, [])
+  return <><div className="page-heading"><div><p className="section-kicker">Genel bakış</p><h2>Finansal durumun</h2><p className="muted">Financo yalnızca kaydedilmiş verilerini gösterir.</p></div><span className="data-badge"><span className="tiny-dot" /> Gerçek API verisi</span></div><section className="summary-cards"><SummaryCard label="Gelir" /><SummaryCard label="Gider" /><SummaryCard label="Net akış" /></section><section className="dashboard-grid"><article className="panel activity-panel overview-activity"><div className="panel-header"><div><p className="section-kicker">Son işlemler</p><h3>En yeni kaydedilen işlemler</h3></div><button className="text-button" type="button" onClick={() => window.dispatchEvent(new CustomEvent('navigate-transactions'))}>Tümünü gör →</button></div>{loading && <LoadingState label="Son işlemler yükleniyor…" />}{!loading && error && <ErrorState message={error} />}{!loading && !error && result?.items.length === 0 && <EmptyState title="Henüz kayıtlı işlem yok" detail="İlk ekstreni yüklediğinde işlemlerin burada görünecek." action={<button className="primary-button" type="button" onClick={onImport}>Ekstre yükle</button>} />}{!loading && !error && result && result.items.length > 0 && <TransactionList items={result.items} />}</article><article className="panel attention-panel"><div className="panel-header"><div><p className="section-kicker">Özet kapsamı</p><h3>Şeffaf ve kontrollü</h3></div></div><div className="empty-panel"><span className="empty-icon">✓</span><p>Gelir, gider ve net akış kartları için backend’de aylık özet endpoint’i bulunmuyor. Bu nedenle tahmini rakam göstermiyoruz.</p><button className="text-button" type="button" onClick={onImport}>Yeni ekstre yükle →</button></div></article></section><p className="privacy-note">Verilerinin kontrolü sende. Bu prototipte gerçek banka bağlantısı yoktur.</p></>
+}
+function SummaryCard({ label }: { label: string }) { return <article className="summary-card"><p className="section-kicker">{label}</p><strong>—</strong><span>TRY · Dönem özeti yok</span><small>Bu özet için henüz endpoint yok.</small></article> }
+
+function TransactionsView({ onImport }: { onImport: () => void }) {
+  const initialFilters: TransactionFilters = { from: '', to: '', type: '', accountId: '', page: 1, pageSize: 20 }; const [filters, setFilters] = useState(initialFilters); const [result, setResult] = useState<TransactionResponse | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null)
+  useEffect(() => { setLoading(true); setError(null); listTransactions(filters).then(setResult).catch((e) => setError(e instanceof Error ? e.message : 'İşlemler yüklenemedi.')).finally(() => setLoading(false)) }, [filters])
+  function updateFilters(changes: Partial<TransactionFilters>) { setFilters((current) => ({ ...current, ...changes, page: 1 })) }
+  return <><div className="page-heading"><div><p className="section-kicker">Kayıtlı hareketler</p><h2>İşlemler</h2><p className="muted">Yalnızca veritabanına kaydedilmiş işlemler gösterilir.</p></div><button className="secondary-button" type="button" onClick={onImport}>＋ Yeni ekstre</button></div><section className="panel filters-panel"><div className="panel-header"><div><p className="section-kicker">Desteklenen filtreler</p><h3>İşlemleri daralt</h3></div><button className="text-button" type="button" onClick={() => setFilters(initialFilters)}>Filtreleri sıfırla</button></div><div className="filters-grid"><label>Başlangıç tarihi<input type="date" value={filters.from} onChange={(e) => updateFilters({ from: e.target.value })} /></label><label>Bitiş tarihi<input type="date" value={filters.to} onChange={(e) => updateFilters({ to: e.target.value })} /></label><label>İşlem türü<select value={filters.type} onChange={(e) => updateFilters({ type: e.target.value as TransactionFilters['type'] })}><option value="">Tümü</option><option value="Income">Gelir</option><option value="Expense">Gider</option><option value="Transfer">Transfer</option><option value="Refund">İade</option><option value="CardPayment">Kart ödemesi</option></select></label><label>Hesap ID<input type="text" placeholder="GUID girin" value={filters.accountId} onChange={(e) => updateFilters({ accountId: e.target.value })} /></label></div><p className="filter-note">Kategori ve açıklama araması backend tarafından desteklenmediği için gösterilmiyor.</p></section><section className="panel transactions-panel"><div className="panel-header"><div><p className="section-kicker">Sonuçlar</p><h3>{result ? `${result.totalCount} işlem` : 'İşlemler'}</h3></div>{result && <span className="soft-chip light-chip">Sayfa {result.page} / {Math.max(result.totalPages, 1)}</span>}</div>{loading && <LoadingState label="İşlemler yükleniyor…" />}{!loading && error && <ErrorState message={error} />}{!loading && !error && result?.items.length === 0 && <EmptyState title="Filtrelere uygun işlem yok" detail="Filtreleri temizleyip tekrar deneyebilir veya yeni bir ekstre yükleyebilirsin." />}{!loading && !error && result && result.items.length > 0 && <><TransactionTable items={result.items} /><Pagination result={result} onPageChange={(page) => setFilters((current) => ({ ...current, page }))} /></>}</section></>
 }
 
-function NavButton({ item, active, onClick }: { item: (typeof navItems)[number]; active: boolean; onClick: () => void }) {
-  return <button className={`nav-button ${active ? 'active' : ''}`} type="button" onClick={onClick} aria-current={active ? 'page' : undefined}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>
+function TransactionList({ items }: { items: Transaction[] }) { return <div className="mini-list">{items.map((item, index) => <div className="mini-row" key={`${item.date}-${index}`}><span className="status-dot valid" /><span><strong>{item.description || 'Açıklamasız işlem'}</strong><small>{formatDate(item.date)} · {item.accountName}</small></span><span className="mini-amount">{formatMoney(item.amount, item.currency)}</span></div>)}</div> }
+function TransactionTable({ items }: { items: Transaction[] }) { return <div className="table-wrap"><table className="transaction-table"><thead><tr><th>Tarih</th><th>Açıklama</th><th>Hesap</th><th>Kategori</th><th>Tür</th><th>Tutar</th></tr></thead><tbody>{items.map((item, index) => <tr key={`${item.date}-${index}`}><td>{formatDate(item.date)}</td><td className="description-cell" title={item.description}>{item.description || 'Açıklamasız işlem'}</td><td>{item.accountName}</td><td>{item.categoryName ?? '—'}</td><td><span className={`tag type-${item.type.toLowerCase()}`}>{transactionTypeLabel(item.type)}</span></td><td className="amount-cell">{formatMoney(item.amount, item.currency)}</td></tr>)}</tbody></table></div> }
+function Pagination({ result, onPageChange }: { result: TransactionResponse; onPageChange: (page: number) => void }) { return <div className="pagination"><button className="secondary-button" type="button" disabled={result.page <= 1} onClick={() => onPageChange(result.page - 1)}>← Önceki</button><span>{result.page} / {Math.max(result.totalPages, 1)}</span><button className="secondary-button" type="button" disabled={result.page >= result.totalPages} onClick={() => onPageChange(result.page + 1)}>Sonraki →</button></div> }
+function transactionTypeLabel(type: TransactionType) { return ({ Income: 'Gelir', Expense: 'Gider', Transfer: 'Transfer', Refund: 'İade', CardPayment: 'Kart ödemesi' })[type] }
+
+function ImportView({ preview, confirmation, onPreview, onConfirmed, onViewTransactions }: { preview: PreviewResponse | null; confirmation: ConfirmResponse | null; onPreview: (preview: PreviewResponse) => void; onConfirmed: (confirmation: ConfirmResponse) => void; onViewTransactions: () => void }) {
+  const [file, setFile] = useState<File | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false); const [confirming, setConfirming] = useState(false)
+  async function handlePreview() { if (!file) return; setLoading(true); setError(null); try { onPreview(await previewImport(file)) } catch (e) { setError(e instanceof Error ? e.message : 'CSV önizlemesi oluşturulamadı.') } finally { setLoading(false) } }
+  async function handleConfirm() { if (!preview) return; setConfirming(true); setError(null); try { onConfirmed(await confirmImport(preview.importJobId)) } catch (e) { setError(e instanceof Error ? e.message : 'İçe aktarma onaylanamadı.') } finally { setConfirming(false) } }
+  return <><div className="page-heading"><div><p className="section-kicker">Veri ekle</p><h2>Ekstre yükle</h2><p className="muted">Dosya seç, satırları incele ve onayından sonra kaydet.</p></div></div><div className="stepper" aria-label="İçe aktarma adımları"><span className={file ? 'done' : 'current'}>1 <b>Dosya seç</b></span><span className={preview ? 'done' : ''}>2 <b>Önizle ve incele</b></span><span className={confirmation ? 'done' : ''}>3 <b>Onayla ve kaydet</b></span></div><section className="import-layout"><article className="panel upload-panel"><div className="dropzone"><div className="upload-symbol">↑</div><h3>CSV dosyanı seç</h3><p className="muted">En fazla 5 MB · tarih / açıklama / tutar sütunları gerekli</p><label className="primary-button file-picker">Dosya seç<input type="file" accept=".csv,text/csv" disabled={loading || confirming} onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null) }} /></label>{file && <p className="selected-file">Seçilen dosya: <strong>{file.name}</strong></p>}</div>{error && <div className="alert error" role="alert">{error}</div>}<button className="primary-button full-button" type="button" onClick={handlePreview} disabled={!file || loading || confirming}>{loading ? 'Önizleme hazırlanıyor…' : 'Önizlemeyi başlat'}</button></article><aside className="explanation-card"><span className="explanation-icon">✓</span><h3>Önce kontrol</h3><p>Geçerli ve hatalı satırları görmeden hiçbir veri kaydedilmez.</p><span className="privacy-label">Gizlilik · Açıklanabilirlik</span></aside></section>{preview && <PreviewResult preview={preview} confirmation={confirmation} confirming={confirming} onConfirm={handleConfirm} onViewTransactions={onViewTransactions} />}</>
 }
-
-function Overview({ preview, onImport }: { preview: PreviewResponse | null; onImport: () => void }) {
-  const hasData = Boolean(preview?.validRows)
-  return <>
-    <div className="page-heading"><div><p className="section-kicker">Genel bakış</p><h2>Paranla aran nasıl?</h2><p className="muted">Verine dayalı sakin ve anlaşılır bir finans görünümü.</p></div><span className="data-badge"><span className="tiny-dot" /> {hasData ? 'Önizleme verisi' : 'Veri bekleniyor'}</span></div>
-    <section className="hero-grid">
-      <article className="hero-card"><div className="card-heading"><span className="section-kicker">Bugünkü görünüm</span><span className="info-mark" title="Başlangıç bakiyesi ve işlem verisi eklendiğinde hesaplanır.">i</span></div><p className="empty-value">—</p><p className="value-caption">Bakiye bilgisi eklenmedi</p><div className="card-divider" /><p className="muted small">Hesap ve başlangıç bakiyesi eklendiğinde güncel durum burada görünecek.</p></article>
-      <article className="forecast-card"><div className="card-heading"><span className="section-kicker light">Maaş gününe kadar</span><span className="soft-chip">Tahmin kapalı</span></div><p className="empty-value light-value">—</p><p className="value-caption light-caption">Henüz yeterli veri yok</p><p className="forecast-note">Başlangıç bakiyesi, maaş tarihi ve tutarı tanımlandığında tahmin aralığı açıklamasıyla birlikte gösterilecek.</p></article>
-    </section>
-    <section className="dashboard-grid">
-      <article className="panel chart-panel"><div className="panel-header"><div><p className="section-kicker">Nakit akışı</p><h3>Bugün → maaş günü</h3></div><span className="panel-action">Nasıl hesaplanır?</span></div><EmptyChart /></article>
-      <article className="panel attention-panel"><div className="panel-header"><div><p className="section-kicker">Dikkat çekenler</p><h3>Henüz içgörü yok</h3></div></div><div className="empty-panel"><span className="empty-icon">✦</span><p>Ekstre yüklendiğinde yaklaşan ödemeler ve önemli değişimler burada açıklanacak.</p><button className="text-button" type="button" onClick={onImport}>İlk ekstreni ekle →</button></div></article>
-    </section>
-    <section className="panel activity-panel"><div className="panel-header"><div><p className="section-kicker">Son hareketler</p><h3>{preview ? `${preview.validRows} geçerli satır önizlendi` : 'İşlem geçmişi bekleniyor'}</h3></div><span className="panel-action">Tümünü gör</span></div>{preview ? <div className="mini-list">{preview.rows.slice(0, 3).map((row) => <div className="mini-row" key={row.rowNumber}><span className={`status-dot ${row.isValid ? 'valid' : 'invalid'}`} /><span>{row.description || 'Açıklamasız işlem'}</span><span className="mini-date">{row.transactionDate || 'Tarih yok'}</span></div>)}</div> : <div className="empty-inline">Henüz işlem bulunmuyor. Başlamak için bir CSV ekstre yükleyin.</div>}</section>
-    <p className="privacy-note">Verilerinin kontrolü sende. Bu prototipte gerçek banka bağlantısı yoktur.</p>
-  </>
-}
-
-function EmptyChart() { return <div className="empty-chart"><div className="chart-lines"><span /><span /><span /><span /></div><div className="chart-axis"><span>Bugün</span><span>Maaş günü</span></div><div className="chart-legend"><span><i className="legend-line" /> Gerçekleşen</span><span><i className="legend-dashed" /> Tahmin</span></div></div> }
-
-function ImportView({ preview, confirmation, onPreview, onConfirmed }: { preview: PreviewResponse | null; confirmation: ConfirmResponse | null; onPreview: (preview: PreviewResponse) => void; onConfirmed: (confirmation: ConfirmResponse) => void }) {
-  const [file, setFile] = useState<File | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  async function previewFile() {
-    if (!file) return
-    setLoading(true); setError(null)
-    const formData = new FormData(); formData.append('file', file)
-    try { const response = await fetch('http://localhost:5080/api/imports/preview', { method: 'POST', body: formData }); const body = await response.json(); if (!response.ok) throw new Error(body.detail ?? 'CSV önizlemesi oluşturulamadı.'); onPreview(body as PreviewResponse) }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Beklenmeyen bir hata oluştu.') }
-    finally { setLoading(false) }
-  }
-  async function confirmImport() {
-    if (!preview) return
-    setConfirming(true); setError(null)
-    try {
-      const response = await fetch(`http://localhost:5080/api/imports/${preview.importJobId}/confirm`, { method: 'POST' })
-      const body = await response.json()
-      if (!response.ok) throw new Error(body.detail ?? 'İçe aktarma onaylanamadı.')
-      onConfirmed(body as ConfirmResponse)
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Beklenmeyen bir hata oluştu.') }
-    finally { setConfirming(false) }
-  }
-  return <>
-    <div className="page-heading"><div><p className="section-kicker">Veri ekle</p><h2>Ekstreni içe aktar</h2><p className="muted">Önce kontrol ederiz, sen onaylamadan finansal kayıt oluşturmayız.</p></div></div>
-    <section className="import-layout"><article className="panel upload-panel"><div className="dropzone"><div className="upload-symbol">↑</div><h3>CSV dosyanı buraya bırak</h3><p className="muted">veya bilgisayarından seç. En fazla 5 MB.</p><label className="primary-button file-picker">Dosya seç<input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>{file && <p className="selected-file">Seçilen dosya: <strong>{file.name}</strong></p>}</div><div className="format-note"><strong>Beklenen sütunlar</strong><span>tarih / açıklama / tutar</span><span>Para birimi isteğe bağlıdır, varsayılan TRY.</span></div>{error && <div className="alert error" role="alert">{error}</div>}<button className="primary-button full-button" type="button" onClick={previewFile} disabled={!file || loading}>{loading ? 'Kontrol ediliyor…' : 'Önizlemeyi başlat'}</button></article><aside className="explanation-card"><span className="explanation-icon">✓</span><h3>Kontrol sende</h3><p>Dosyayı önce satır satır doğrularız. Hatalı tarih veya tutarları görmeden hiçbir veri kalıcı işleme dönüşmez.</p><span className="privacy-label">Gizlilik · Açıklanabilirlik</span></aside></section>
-    {preview && <PreviewResult preview={preview} confirmation={confirmation} confirming={confirming} onConfirm={confirmImport} />}
-  </>
-}
-
-function PreviewResult({ preview, confirmation, confirming, onConfirm }: { preview: PreviewResponse; confirmation: ConfirmResponse | null; confirming: boolean; onConfirm: () => void }) { return <section className="panel preview-panel"><div className="panel-header"><div><p className="section-kicker">Önizleme sonucu</p><h3>{preview.fileName}</h3></div><span className="data-badge">{preview.importJobId.slice(0, 8)}</span></div><div className="summary-row"><Summary label="Toplam satır" value={preview.totalRows.toString()} /><Summary label="Geçerli" value={preview.validRows.toString()} tone="positive" /><Summary label="Hatalı" value={preview.invalidRows.toString()} tone="negative" /></div>{preview.validRows > 0 && !confirmation && <button className="primary-button" type="button" onClick={onConfirm} disabled={confirming}>{confirming ? 'Kaydediliyor…' : 'Onayla ve kaydet'}</button>}{confirmation && <div className="confirmation-result" role="status"><strong>{confirmation.alreadyConfirmed ? 'Bu import daha önce onaylandı.' : 'Import başarıyla onaylandı.'}</strong><span>{confirmation.createdTransactions} işlem kaydedildi. {confirmation.invalidRows} hatalı satır kaydedilmedi.</span></div>}<PreviewTable rows={preview.rows} /></section> }
+function PreviewResult({ preview, confirmation, confirming, onConfirm, onViewTransactions }: { preview: PreviewResponse; confirmation: ConfirmResponse | null; confirming: boolean; onConfirm: () => void; onViewTransactions: () => void }) { return <section className="panel preview-panel"><div className="panel-header"><div><p className="section-kicker">2 · Önizleme sonucu</p><h3>{preview.fileName}</h3></div><span className="data-badge">{preview.importJobId.slice(0, 8)}</span></div><div className="summary-row"><Summary label="Toplam satır" value={String(preview.totalRows)} /><Summary label="Geçerli" value={String(preview.validRows)} tone="positive" /><Summary label="Hatalı" value={String(preview.invalidRows)} tone="negative" /></div>{preview.validRows > 0 && !confirmation && <button className="primary-button" type="button" onClick={onConfirm} disabled={confirming}>{confirming ? 'Kaydediliyor…' : 'Onayla ve kaydet'}</button>}{confirmation && <div className="confirmation-result" role="status"><strong>{confirmation.alreadyConfirmed ? 'Bu import daha önce onaylandı.' : 'Import başarıyla onaylandı.'}</strong><span>{confirmation.alreadyConfirmed ? 'Yeni işlem oluşturulmadı.' : `${confirmation.createdTransactions} işlem kaydedildi.`} {confirmation.invalidRows} hatalı satır kaydedilmedi.</span><button className="text-button" type="button" onClick={onViewTransactions}>Kayıtlı işlemleri gör →</button></div>}<PreviewTable rows={preview.rows} /></section> }
 function Summary({ label, value, tone = '' }: { label: string; value: string; tone?: string }) { return <div className="summary-item"><span>{label}</span><strong className={tone}>{value}</strong></div> }
-function PreviewTable({ rows }: { rows: PreviewRow[] }) { return <div className="table-wrap"><table><thead><tr><th>Satır</th><th>Durum</th><th>Tarih</th><th>Açıklama</th><th>Tutar</th><th>Not</th></tr></thead><tbody>{rows.map((row) => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td><span className={`tag ${row.isValid ? 'valid' : 'invalid'}`}>{row.isValid ? 'Geçerli' : 'Hatalı'}</span></td><td>{row.transactionDate ?? '—'}</td><td>{row.description || '—'}</td><td>{row.amount == null ? '—' : `${row.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${row.currencyCode}`}</td><td>{row.validationErrors.join(' ') || '—'}</td></tr>)}</tbody></table></div> }
-
-function TransactionsView({ preview, confirmation, onImport }: { preview: PreviewResponse | null; confirmation: ConfirmResponse | null; onImport: () => void }) {
-  const validRows = useMemo(() => preview?.rows.filter((row) => row.isValid) ?? [], [preview])
-  return <><div className="page-heading"><div><p className="section-kicker">İşlem inceleme</p><h2>İşlemler</h2><p className="muted">İçe aktarılan satırları onaylamadan önce gözden geçir.</p></div><button className="secondary-button" type="button" onClick={onImport}>＋ Yeni ekstre</button></div>{!preview ? <section className="panel large-empty"><span className="empty-icon">≡</span><h3>Henüz işlem yok</h3><p className="muted">İşlemleri görmek için önce bir CSV ekstre yükle.</p><button className="primary-button" type="button" onClick={onImport}>Ekstre ekle</button></section> : <section className="panel"><div className="panel-header"><div><p className="section-kicker">İncelenecek satırlar</p><h3>{confirmation ? `${confirmation.createdTransactions} işlem kaydedildi` : `${validRows.length} geçerli işlem`}</h3></div><span className="soft-chip">{confirmation ? 'Onaylandı' : 'Onay bekliyor'}</span></div><PreviewTable rows={preview.rows} /></section>}</>
-}
+function PreviewTable({ rows }: { rows: PreviewRow[] }) { return <div className="table-wrap"><table><thead><tr><th>Satır</th><th>Durum</th><th>Tarih</th><th>Açıklama</th><th>Tutar</th><th>Hata nedeni</th></tr></thead><tbody>{rows.map((row) => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td><span className={`tag ${row.isValid ? 'valid' : 'invalid'}`}>{row.isValid ? 'Geçerli' : 'Hatalı'}</span></td><td>{formatDate(row.transactionDate)}</td><td className="description-cell" title={row.description ?? undefined}>{row.description || '—'}</td><td>{row.amount == null ? '—' : formatMoney(row.amount, row.currencyCode)}</td><td>{row.validationErrors.length ? row.validationErrors.join(' ') : '—'}</td></tr>)}</tbody></table></div> }
+function SettingsView() { return <><div className="page-heading"><div><p className="section-kicker">Uygulama</p><h2>Ayarlar</h2><p className="muted">Bu prototipte mevcut ayarlar.</p></div></div><section className="panel settings-panel"><div className="setting-row"><div><strong>Veri kaynağı</strong><p>Financo API · yerel çalışma alanı</p></div><span className="soft-chip light-chip">Gerçek endpoint</span></div><div className="setting-row"><div><strong>Gizlilik</strong><p>Gerçek banka bağlantısı veya kullanıcı kimlik doğrulaması kullanılmıyor.</p></div></div><div className="setting-row muted-setting"><div><strong>Hesap ve tercih yönetimi</strong><p>Sonraki aşamada</p></div></div></section></> }
+function LoadingState({ label }: { label: string }) { return <div className="state-box"><span className="spinner" aria-hidden="true" />{label}</div> }
+function ErrorState({ message }: { message: string }) { return <div className="state-box error-state" role="alert"><strong>Bir sorun oluştu</strong><span>{message}</span></div> }
+function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) { return <div className="state-box empty-state"><strong>{title}</strong><span>{detail}</span>{action}</div> }
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
-
