@@ -10,6 +10,8 @@ public sealed class Account
     [MaxLength(3)] public string CurrencyCode { get; set; } = "TRY";
     public decimal? OpeningBalance { get; set; }
     public DateOnly? OpeningBalanceDate { get; set; }
+    public DateOnly? NextIncomeDate { get; set; }
+    public decimal? NextIncomeAmount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 }

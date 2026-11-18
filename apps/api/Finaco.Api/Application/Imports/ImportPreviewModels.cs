@@ -1,3 +1,5 @@
+using Finaco.Api.Domain;
+
 namespace Finaco.Api.Application.Imports;
 
 /// <summary>Represents the parsed result of one uploaded CSV row.</summary>
@@ -18,3 +20,13 @@ public sealed record ImportPreviewResponse(
     int ValidRows,
     int InvalidRows,
     IReadOnlyList<ImportRowPreviewResponse> Rows);
+
+/// <summary>Represents the result of confirming a validated import.</summary>
+public sealed record ImportConfirmResponse(
+    Guid ImportJobId,
+    ImportStatus Status,
+    int TotalRows,
+    int ValidRows,
+    int InvalidRows,
+    int CreatedTransactions,
+    bool AlreadyConfirmed);

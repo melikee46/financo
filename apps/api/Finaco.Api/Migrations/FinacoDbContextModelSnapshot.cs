@@ -50,6 +50,13 @@ namespace Finaco.Api.Migrations
                     b.Property<DateOnly?>("OpeningBalanceDate")
                         .HasColumnType("date");
 
+                    b.Property<decimal?>("NextIncomeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("NextIncomeDate")
+                        .HasColumnType("date");
+
                     b.Property<int>("Type")
                         .HasColumnType("integer");
 

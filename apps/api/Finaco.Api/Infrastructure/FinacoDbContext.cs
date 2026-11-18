@@ -15,7 +15,7 @@ public sealed class FinacoDbContext(DbContextOptions<FinacoDbContext> options) :
     {
         modelBuilder.Entity<Account>(entity =>
         {
-            entity.ToTable("accounts"); entity.HasKey(x => x.Id); entity.Property(x => x.CurrencyCode).HasDefaultValue("TRY"); entity.Property(x => x.OpeningBalance).HasPrecision(18, 2); entity.HasIndex(x => x.Name);
+            entity.ToTable("accounts"); entity.HasKey(x => x.Id); entity.Property(x => x.CurrencyCode).HasDefaultValue("TRY"); entity.Property(x => x.OpeningBalance).HasPrecision(18, 2); entity.Property(x => x.NextIncomeAmount).HasPrecision(18, 2); entity.HasIndex(x => x.Name);
         });
         modelBuilder.Entity<Category>(entity =>
         {
