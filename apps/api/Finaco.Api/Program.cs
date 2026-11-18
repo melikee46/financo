@@ -37,6 +37,8 @@ catch (ArgumentException exception)
 
 builder.Services.AddDbContext<FinacoDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<Finaco.Api.Application.Imports.ImportPreviewService>();
+builder.Services.AddScoped<Finaco.Api.Application.Transactions.ITransactionListService, Finaco.Api.Application.Transactions.TransactionListService>();
+builder.Services.AddScoped<Finaco.Api.Application.Cashflow.CashflowService>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -63,6 +65,8 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 });
 app.MapControllers();
 app.MapImportEndpoints();
+app.MapTransactionEndpoints();
+app.MapCashflowEndpoints();
 
 app.Run();
 

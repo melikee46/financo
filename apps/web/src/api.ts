@@ -18,6 +18,11 @@ export type TransactionResponse = {
   totalPages: number
 }
 
+export type CashflowAccount = { id: string; name: string; currency: string; openingBalance: number | null; openingBalanceDate: string | null; nextIncomeDate: string | null; nextIncomeAmount: number | null }
+export type CashflowPoint = { date: string; balance: number; isProjected: boolean }
+export type CashflowEntry = { date: string; description: string; amount: number; currency: string; type: TransactionType }
+export type CashflowResponse = { account: CashflowAccount; startDate: string; incomeDate: string | null; daysUntilIncome: number | null; lowestProjectedBalance: number | null; lowestBalanceDate: string | null; points: CashflowPoint[]; includedEntries: CashflowEntry[]; warnings: string[]; method: string; dataCutoffDate: string; isLimited: boolean; scenario: { description: string; incomeDate: string; points: CashflowPoint[]; lowestProjectedBalance: number | null; lowestBalanceDate: string | null } | null }
+
 export type TransactionFilters = {
   from: string
   to: string
@@ -98,6 +103,10 @@ export async function previewImport(file: File): Promise<PreviewResponse> {
 export async function confirmImport(importJobId: string): Promise<ConfirmResponse> {
   return requestJson<ConfirmResponse>(`/api/imports/${importJobId}/confirm`, { method: 'POST' })
 }
+
+export async function listCashflowAccounts(): Promise<CashflowAccount[]> { return requestJson<CashflowAccount[]>('/api/cashflow/accounts') }
+export async function saveCashflowSettings(accountId: string, settings: { openingBalance: number; openingBalanceDate: string; nextIncomeDate: string; nextIncomeAmount: number }): Promise<CashflowAccount> { return requestJson<CashflowAccount>(`/api/cashflow/accounts/${accountId}/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }) }
+export async function getCashflowProjection(accountId: string, scenario?: { unexpectedExpenseAmount?: number; unexpectedExpenseDate?: string; delayedIncomeDays?: number; additionalIncomeAmount?: number; additionalIncomeDate?: string }): Promise<CashflowResponse> { return requestJson<CashflowResponse>(`/api/cashflow/accounts/${accountId}/projection`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scenario ?? {}) }) }
 
 export function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY' }).format(amount)

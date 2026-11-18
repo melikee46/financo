@@ -64,7 +64,7 @@ public sealed class ImportPreviewService(FinacoDbContext db)
 
         if (job.Status == ImportStatus.Confirmed)
         {
-            return new ImportConfirmResponse(job.Id, job.Status, job.Rows.Count, validRows.Count, invalidRows, validRows.Count, true);
+            return new ImportConfirmResponse(job.Id, job.Status, job.Rows.Count, validRows.Count, invalidRows, 0, true);
         }
 
         if (validRows.Count == 0)
