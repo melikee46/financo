@@ -22,6 +22,7 @@ export type CashflowAccount = { id: string; name: string; currency: string; open
 export type CashflowPoint = { date: string; balance: number; isProjected: boolean }
 export type CashflowEntry = { date: string; description: string; amount: number; currency: string; type: TransactionType }
 export type CashflowResponse = { account: CashflowAccount; startDate: string; incomeDate: string | null; daysUntilIncome: number | null; lowestProjectedBalance: number | null; lowestBalanceDate: string | null; points: CashflowPoint[]; includedEntries: CashflowEntry[]; warnings: string[]; method: string; dataCutoffDate: string; isLimited: boolean; scenario: { description: string; incomeDate: string; points: CashflowPoint[]; lowestProjectedBalance: number | null; lowestBalanceDate: string | null } | null }
+export type FinfinChatResponse = { mode: 'demo' | 'llm'; isDemo: boolean; answer: string; context: string[]; missingData: string[]; relatedPath: string; requiredEnvironmentVariables: string[] }
 
 export type TransactionFilters = {
   from: string
@@ -63,16 +64,27 @@ export type ConfirmResponse = {
 
 const API_BASE_URL = 'http://localhost:5080'
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number | null, readonly kind: 'network' | 'missing-data' | 'server' | 'client') {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, options)
   } catch {
-    throw new Error('Financo API’ye ulaşılamadı. Backend’in çalıştığını kontrol edin.')
+    throw new ApiError('Financo API’ye ulaşılamadı. Backend’in çalıştığını kontrol edip tekrar deneyin.', null, 'network')
   }
 
   const body = await response.json().catch(() => null) as { detail?: string; title?: string }
-  if (!response.ok) throw new Error(body?.detail ?? body?.title ?? 'İstek tamamlanamadı.')
+  if (!response.ok) {
+    const isMissingData = response.status === 400 && (body?.title?.includes('Eksik') || body?.detail?.includes('eksik'))
+    const kind = isMissingData ? 'missing-data' : response.status >= 500 ? 'server' : 'client'
+    throw new ApiError(isMissingData ? (body?.detail ?? 'Tahmin için gerekli finansal bilgiler eksik.') : response.status >= 500 ? 'Sunucuda beklenmeyen bir hata oluştu. Lütfen biraz sonra tekrar deneyin.' : (body?.detail ?? body?.title ?? 'İstek geçersiz.') , response.status, kind)
+  }
   return body as T
 }
 
@@ -107,6 +119,7 @@ export async function confirmImport(importJobId: string): Promise<ConfirmRespons
 export async function listCashflowAccounts(): Promise<CashflowAccount[]> { return requestJson<CashflowAccount[]>('/api/cashflow/accounts') }
 export async function saveCashflowSettings(accountId: string, settings: { openingBalance: number; openingBalanceDate: string; nextIncomeDate: string; nextIncomeAmount: number }): Promise<CashflowAccount> { return requestJson<CashflowAccount>(`/api/cashflow/accounts/${accountId}/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }) }
 export async function getCashflowProjection(accountId: string, scenario?: { unexpectedExpenseAmount?: number; unexpectedExpenseDate?: string; delayedIncomeDays?: number; additionalIncomeAmount?: number; additionalIncomeDate?: string }): Promise<CashflowResponse> { return requestJson<CashflowResponse>(`/api/cashflow/accounts/${accountId}/projection`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scenario ?? {}) }) }
+export async function chatWithFinfin(accountId: string, question: string): Promise<FinfinChatResponse> { return requestJson<FinfinChatResponse>('/api/finfin/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accountId, question }) }) }
 
 export function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY' }).format(amount)

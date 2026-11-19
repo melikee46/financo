@@ -39,6 +39,7 @@ builder.Services.AddDbContext<FinacoDbContext>(options => options.UseNpgsql(conn
 builder.Services.AddScoped<Finaco.Api.Application.Imports.ImportPreviewService>();
 builder.Services.AddScoped<Finaco.Api.Application.Transactions.ITransactionListService, Finaco.Api.Application.Transactions.TransactionListService>();
 builder.Services.AddScoped<Finaco.Api.Application.Cashflow.CashflowService>();
+builder.Services.AddScoped<Finaco.Api.Application.Finfin.FinfinService>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -67,6 +68,7 @@ app.MapControllers();
 app.MapImportEndpoints();
 app.MapTransactionEndpoints();
 app.MapCashflowEndpoints();
+app.MapFinfinEndpoints();
 
 app.Run();
 
