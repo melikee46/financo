@@ -53,3 +53,180 @@
 @media (max-width: 620px) { .cashflow-settings .budget-form, .scenario-panel .budget-form { grid-template-columns: 1fr; }.cashflow-bars { height: 180px; } }
 .error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }.finfin-panel { margin-top: 16px; }.finfin-body { margin-top: 20px; }.finfin-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }.finfin-suggestions button { padding: 8px 10px; border: 1px solid #d8e6df; border-radius: 999px; color: #49665e; background: #f8fcfa; cursor: pointer; font-size: .78rem; }.finfin-form { display: flex; gap: 10px; margin-top: 14px; }.finfin-form input { min-width: 0; flex: 1; padding: 10px 11px; border: 1px solid #cfe0d8; border-radius: 8px; }.finfin-response { display: grid; gap: 7px; margin-top: 16px; padding: 14px; border: 1px solid #d8e6df; border-radius: 10px; background: #f8fcfa; }.finfin-response p { margin: 0; color: #385b51; font-size: .86rem; line-height: 1.55; }.finfin-response small { color: #6f827c; line-height: 1.45; }
 @media (max-width: 620px) { .finfin-form { align-items: stretch; flex-direction: column; }.finfin-form .primary-button { width: 100%; } }
+
+/* Finfin Floating Assistant Widget */
+.finfin-floating-root { position: relative; z-index: 90; }
+.finfin-launcher-btn {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #17765d;
+  box-shadow: 0 6px 20px rgba(23, 118, 93, 0.28);
+  font-weight: 750;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.finfin-launcher-btn:hover { background: #11634e; transform: translateY(-2px); }
+.finfin-launcher-btn:active { transform: translateY(0); }
+.finfin-launcher-btn:focus-visible {
+  outline: 3px solid #17765d;
+  outline-offset: 3px;
+}
+.finfin-launcher-icon { font-size: 1.15rem; line-height: 1; }
+
+.finfin-window {
+  position: fixed;
+  right: 24px;
+  bottom: 84px;
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-height: 520px;
+  border: 1px solid #dce8e2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 14px 40px rgba(20, 60, 48, 0.14);
+  overflow: hidden;
+}
+.finfin-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef4f0;
+  background: #fbfdfb;
+}
+.finfin-header-info { display: flex; align-items: center; gap: 10px; }
+.finfin-badge-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: #17765d;
+  background: #e4f2ec;
+  font-size: 1rem;
+}
+.finfin-title { margin: 0; color: #173a35; font-size: 1.05rem; letter-spacing: -0.02em; }
+.finfin-subtitle { color: #6d7c81; font-size: 0.73rem; font-weight: 600; }
+.finfin-header-actions { display: flex; align-items: center; gap: 8px; }
+.finfin-close-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  color: #6d7c81;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.finfin-close-btn:hover { color: #173a35; background: #edf5f1; }
+.finfin-close-btn:focus-visible { outline: 2px solid #17765d; outline-offset: 2px; }
+
+.finfin-window-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 440px;
+}
+.finfin-disclaimer-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbeae2;
+  border-radius: 10px;
+  background: #f4faf7;
+  color: #385b51;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.finfin-disclaimer-box strong { color: #17674f; }
+.finfin-disclaimer-box p { margin: 0; }
+.finfin-info-icon { font-size: 0.95rem; color: #17765d; }
+
+/* Finfin Welcome & Guide Components */
+.finfin-avatar-svg {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.finfin-welcome-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce8e2;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+.finfin-welcome-avatar-wrap {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.finfin-welcome-content h4 {
+  margin: 0 0 4px;
+  color: #173a35;
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+.finfin-welcome-content p {
+  margin: 0;
+  color: #556c67;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.finfin-guide-box {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #edf5f1;
+  color: #405c55;
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+.finfin-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #17674f;
+  font-weight: 750;
+  font-size: 0.8rem;
+}
+.finfin-guide-box p { margin: 0; }
+
+@media (max-width: 620px) {
+  .finfin-launcher-btn {
+    right: 16px;
+    bottom: 84px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+  .finfin-window {
+    right: 12px;
+    left: 12px;
+    bottom: 144px;
+    width: auto;
+    max-height: 65vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .finfin-launcher-btn { transition: none; }
+}
+
