@@ -10,6 +10,7 @@ namespace Finaco.Api.Application.Imports;
 public sealed class ImportPreviewService(FinacoDbContext db)
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
+    private const int MaxRows = 10_000;
 
     public async Task<ImportPreviewResponse> PreviewAsync(IFormFile file, CancellationToken cancellationToken)
     {
@@ -19,7 +20,12 @@ public sealed class ImportPreviewService(FinacoDbContext db)
         await using var stream = file.OpenReadStream();
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         var lines = new List<string>();
-        while (await reader.ReadLineAsync(cancellationToken) is { } line) lines.Add(line);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            lines.Add(line);
+            if (lines.Count > MaxRows + 1)
+                throw new CsvImportException($"CSV dosyası en fazla {MaxRows:N0} veri satırı içerebilir.");
+        }
         if (lines.Count < 2) throw new CsvImportException("CSV dosyasında başlık ve en az bir veri satırı bulunmalı.");
 
         var headers = ParseCsvLine(lines[0]).Select(NormalizeHeader).ToArray();
@@ -120,8 +126,9 @@ public sealed class ImportPreviewService(FinacoDbContext db)
         DateOnly? date = TryParseDate(dateText, out var parsedDate) ? parsedDate : null;
         if (date is null) errors.Add("Tarih Türkçe veya ISO biçiminde okunamadı.");
         if (string.IsNullOrWhiteSpace(description)) errors.Add("Açıklama boş olamaz.");
+        else if (description.Length > 500) errors.Add("Açıklama 500 karakterden uzun olamaz.");
         if (!TryParseAmount(amountText, out var parsedAmount) || parsedAmount == 0) errors.Add("Tutar geçerli ve sıfırdan farklı olmalı.");
-        if (currency.Length != 3) errors.Add("Para birimi üç harfli olmalı.");
+        if (currency.Length != 3 || currency.Any(character => character is < 'A' or > 'Z')) errors.Add("Para birimi üç büyük harf olmalı.");
         return new ParsedImportRow(rowNumber, date, description, parsedAmount == 0 ? null : Math.Abs(parsedAmount), currency, errors);
     }
 

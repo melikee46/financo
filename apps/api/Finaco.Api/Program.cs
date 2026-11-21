@@ -49,6 +49,13 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    await next();
+});
 app.UseCors("frontend");
 
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
