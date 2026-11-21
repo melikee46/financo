@@ -15,7 +15,9 @@ public static class ImportEndpoints
             .Accepts<IFormFile>("multipart/form-data")
             .DisableAntiforgery()
             .Produces<ImportPreviewResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .WithRequestTimeout(TimeSpan.FromSeconds(30))
+            .WithMetadata(new RequestSizeLimitAttribute(6 * 1024 * 1024));
         endpoints.MapPost("/api/imports/{id:guid}/confirm", Confirm)
             .WithName("ConfirmImport")
             .WithSummary("Confirm valid rows from an import")
@@ -30,6 +32,8 @@ public static class ImportEndpoints
         IFormFile? file, ImportPreviewService service, CancellationToken cancellationToken)
     {
         if (file is null) return TypedResults.BadRequest(new ProblemDetails { Title = "Dosya gerekli", Detail = "Bir CSV dosyası yükleyin." });
+        if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+            return TypedResults.BadRequest(new ProblemDetails { Title = "Geçersiz dosya türü", Detail = "Yalnızca .csv dosyaları yüklenebilir." });
         try
         {
             return TypedResults.Ok(await service.PreviewAsync(file, cancellationToken));
