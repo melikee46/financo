@@ -62,7 +62,10 @@ export type ConfirmResponse = {
   alreadyConfirmed: boolean
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5080'
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
+const API_BASE_URL = import.meta.env.DEV
+  ? configuredApiUrl?.replace(/\/$/, '') || 'http://localhost:5080'
+  : ''
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number | null, readonly kind: 'network' | 'missing-data' | 'server' | 'client') {

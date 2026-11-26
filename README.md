@@ -26,4 +26,16 @@ Bu sürüm tek kullanıcı ve yerel çalışma alanı senaryosuna odaklanır. Ki
 
 Frontend, backend API üzerinden işlemleri ve hesap verilerini tüketir. Backend; CSV ayrıştırma, veri doğrulama, işlem sorgulama ve nakit akışı hesaplama sorumluluklarını üstlenir. PostgreSQL ise hesap, işlem, kategori ve içe aktarma kayıtlarını kalıcı olarak saklar.
 
+## Vercel canlıya alma
+
+Vercel bu projedeki Vite frontend’i dağıtır; ASP.NET Core API ve PostgreSQL ayrı bir sunucuda/serviste çalışmalıdır. Frontend içindeki Vercel proxy, tarayıcı isteklerini API’ye aktarır:
+
+1. Vercel projesinde **Root Directory** olarak `apps/web` seçin.
+2. Vercel **Environment Variables** bölümüne `BACKEND_API_URL` ekleyin. Değer, örneğin `https://api.example.com` şeklinde olmalı; sonuna `/api` eklemeyin.
+3. API servisinde `ConnectionStrings__DefaultConnection` değişkenini PostgreSQL bağlantı dizesiyle tanımlayın.
+4. API servisinde `CORS_ORIGINS` artık proxy nedeniyle zorunlu değildir; doğrudan API çağrısı da yapılacaksa Vercel adresini ekleyin.
+5. Önce backend’de `/health` adresinin `200` döndürdüğünü, sonra Vercel’de yeni deployment başlatıldığını kontrol edin.
+
+Yerel geliştirmede `VITE_API_URL` verilmezse frontend `http://localhost:5080` adresini kullanır. Vercel üretiminde frontend her zaman aynı origin üzerindeki `/api/*` proxy’sini kullanır; eski veya yanlış bir `VITE_API_URL` değeri production bağlantısını etkilemez.
+
 

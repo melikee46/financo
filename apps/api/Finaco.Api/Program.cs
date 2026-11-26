@@ -43,7 +43,26 @@ builder.Services.AddScoped<Finaco.Api.Application.Finfin.FinfinService>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddCors(options => options.AddPolicy("frontend", policy => policy.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod()));
+var corsOrigins = builder.Configuration["CORS_ORIGINS"]?
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Where(origin => Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                     (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+    .ToArray() ?? [];
+
+if (corsOrigins.Length == 0 && builder.Environment.IsDevelopment())
+{
+    corsOrigins = ["http://localhost:5173"];
+}
+
+builder.Services.AddCors(options => options.AddPolicy("frontend", policy =>
+{
+    if (corsOrigins.Length > 0)
+    {
+        policy.WithOrigins(corsOrigins);
+    }
+
+    policy.AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddControllers();
 
 var app = builder.Build();
